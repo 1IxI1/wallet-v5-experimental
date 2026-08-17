@@ -1,0 +1,57 @@
+[package]
+name = "wallet"
+description = "Wallet V5 (W5) for TON"
+version = "0.1.0"
+license = "MIT"
+
+[toolchain]
+acton = "1.1.0"
+
+[contracts.WalletV5]
+display-name = "WalletV5"
+src = "contracts/WalletV5.tolk"
+depends = []
+
+[test]
+
+[test.mutation]
+minimum-percent = 75.0
+
+[lint]
+max-warnings = 0
+
+[lint.rules]
+dict-type-use = "allow"
+throw-requires-errors-enum = "allow"
+# Sources are vendored verbatim from acton-contracts w5.2, which keeps relative
+# imports. Allowing this rule keeps re-syncs a plain copy.
+import-path-can-use-mappings = "allow"
+
+[fmt]
+width = 100
+ignore = []
+
+[scripts]
+update-wrapper = "acton wrapper WalletV5 -o wrappers/WalletV5.gen.tolk"
+deploy-emulation = "acton script scripts/deploy.tolk"
+deploy-testnet = "acton script scripts/deploy.tolk --net testnet"
+info-emulation = "acton script scripts/info.tolk"
+info-testnet = "acton script scripts/info.tolk --net testnet"
+send-transfer-emulation = "acton script scripts/send-transfer.tolk"
+send-transfer-testnet = "acton script scripts/send-transfer.tolk --net testnet"
+add-extension-emulation = "acton script scripts/add-extension.tolk"
+add-extension-testnet = "acton script scripts/add-extension.tolk --net testnet"
+remove-extension-emulation = "acton script scripts/remove-extension.tolk"
+remove-extension-testnet = "acton script scripts/remove-extension.tolk --net testnet"
+set-signature-emulation = "acton script scripts/set-signature.tolk"
+set-signature-testnet = "acton script scripts/set-signature.tolk --net testnet"
+
+[import-mappings]
+acton = ".acton"
+contracts = "contracts"
+gen = "gen"
+tests = "tests"
+wrappers = "wrappers"
+
+# Check full Acton.toml reference and all available keys:
+# https://ton-blockchain.github.io/acton/docs/acton-toml
