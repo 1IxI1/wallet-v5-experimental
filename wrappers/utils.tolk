@@ -21,12 +21,14 @@ fun WalletV5.deployCodeLib(): cell {
 
 // --- config-code experiment --------------------------------------------------
 // The account code is an 18-byte loader; the REAL W5 code is published as
-// ConfigParam(228). The loader does CONFIGOPTPARAM -> CTOS BLESS -> c3 POPCTR
+// ConfigParam(-228). The loader does CONFIGOPTPARAM -> CTOS BLESS -> c3 POPCTR
 // -> JMPX, forwarding internal/external/get-methods to the config code with the
 // initial stack untouched. Assembled from contracts/config-code-stub.fif; the
-// 228 is baked into the bytes (PUSHINT 16-bit = 8100E4).
-const CONFIG_CODE_PARAM_IDX = 228
-const CONFIG_STUB_CODE_BITS = 0xFF008100E4F833206EF27FD0ED1E20ED53D9
+// -228 is baked into the bytes (PUSHINT 16-bit = 81FF1C). The index is negative
+// because the collator TLB-validates positive indices against known-param
+// schemas and rejects the whole new config when no schema exists.
+const CONFIG_CODE_PARAM_IDX = -228
+const CONFIG_STUB_CODE_BITS = 0xFF0081FF1CF833206EF27FD0ED1E20ED53D9
 
 fun WalletV5.deployCodeConfigStub(): cell {
     var config = testing.getConfig();

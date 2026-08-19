@@ -261,3 +261,9 @@ get fun migration_count(): int {
     val storage = lazy Storage.load();
     return storage.migrationCount;
 }
+
+get fun last_migration_at(): int {
+    checkMigrations();
+    val storage = lazy Storage.load();
+    return storage.lastMigrationAt;
+}

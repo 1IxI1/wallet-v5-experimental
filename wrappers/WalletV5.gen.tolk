@@ -173,3 +173,7 @@ fun WalletV5.dataVersion(self): int {
 fun WalletV5.migrationCount(self): int {
     return net.runGetMethod(self.address, "migration_count");
 }
+
+fun WalletV5.lastMigrationAt(self): int {
+    return net.runGetMethod(self.address, "last_migration_at");
+}

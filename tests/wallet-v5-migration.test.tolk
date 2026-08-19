@@ -10,10 +10,11 @@ import "../wrappers/WalletV5.gen"
 import "../wrappers/utils"
 
 // Data-version migrations through the config-code stub. The wallet's account
-// code is the 18-byte loader; the real code (this build, DATA_VERSION = v2)
-// sits in ConfigParam(228). Wallets whose c4 carries an older version header
-// get migrated by checkMigrations() on the first execution that touches them —
-// the deploy message itself is already such a touch.
+// code is the 18-byte loader; the real code (this build, DATA_VERSION) sits in
+// ConfigParam(228). Wallets whose c4 carries an older version header get
+// migrated by checkMigrations() on the first execution that touches them —
+// staged, one version per step — and the deploy message itself is already such
+// a touch.
 
 fun deployWalletWithData(data: cell): (WalletV5, Treasury) {
     val deployer = testing.treasury("deployer");
@@ -47,13 +48,35 @@ get fun `test migration: v1 data is migrated by the deploy touch`() {
     val keyPair = crypto.generateKeyPair();
     val (wallet, _) = deployWalletWithData(v1Data(keyPair, 5, []));
 
-    // the deploy internal already ran checkMigrations -> c4 is v2 now
-    expect(net.runGetMethod<int>(wallet.address, "data_version")).toEqual(DATA_VERSION_2);
-    expect(net.runGetMethod<int>(wallet.address, "migration_count")).toEqual(1);
+    // the deploy internal already ran checkMigrations -> c4 is current now,
+    // lifted one version at a time (v1 -> v2 -> v3 = 2 migrations)
+    expect(net.runGetMethod<int>(wallet.address, "data_version")).toEqual(DATA_VERSION);
+    expect(net.runGetMethod<int>(wallet.address, "migration_count")).toEqual(2);
+    expect(net.runGetMethod<int>(wallet.address, "last_migration_at")).toBeGreater(0);
     // v1 fields survived the migration intact
     expect(wallet.getSeqno()).toEqual(5);
     expect(wallet.getPublicKey()).toEqual(keyPair.publicKey);
     expect(wallet.isSignatureAllowed()).toEqual(true);
+}
+
+get fun `test migration: v2 data is lifted one version to v3`() {
+    val keyPair = crypto.generateKeyPair();
+    val v2data = StorageV2 {
+        version: DATA_VERSION_2,
+        isSignatureAllowed: true,
+        seqno: 3,
+        subwalletId: DEFAULT_SUBWALLET_ID,
+        publicKey: keyPair.publicKey,
+        extensions: [],
+        wasKeyChanged: false,
+        migrationCount: 1, // pretend it was born v1 and already migrated once
+    }.toCell();
+    val (wallet, _) = deployWalletWithData(v2data);
+
+    expect(net.runGetMethod<int>(wallet.address, "data_version")).toEqual(DATA_VERSION_3);
+    expect(net.runGetMethod<int>(wallet.address, "migration_count")).toEqual(2);
+    expect(net.runGetMethod<int>(wallet.address, "last_migration_at")).toBeGreater(0);
+    expect(wallet.getSeqno()).toEqual(3);
 }
 
 get fun `test migration: external continues seqno after migration`() {
@@ -75,9 +98,9 @@ get fun `test migration: external continues seqno after migration`() {
     expect(txs!).toHaveTx({ from: wallet.address, to: receiver.address, value: ton("1") });
 
     expect(wallet.getSeqno()).toEqual(8);
-    // still exactly ONE migration: the second touch found DATA_VERSION and did nothing
-    expect(net.runGetMethod<int>(wallet.address, "migration_count")).toEqual(1);
-    expect(net.runGetMethod<int>(wallet.address, "data_version")).toEqual(DATA_VERSION_2);
+    // still exactly one migration CHAIN: the second touch found DATA_VERSION and did nothing
+    expect(net.runGetMethod<int>(wallet.address, "migration_count")).toEqual(2);
+    expect(net.runGetMethod<int>(wallet.address, "data_version")).toEqual(DATA_VERSION);
 }
 
 get fun `test migration: extensions dict survives`() {
@@ -94,12 +117,13 @@ get fun `test migration: extensions dict survives`() {
     expect(migrated.get(0)).toEqual(extension.address);
 }
 
-get fun `test migration: v2-born wallet never migrates`() {
+get fun `test migration: wallet born on the current version never migrates`() {
     val keyPair = crypto.generateKeyPair();
     val (wallet, _) = deployWalletWithKey(keyPair);
 
-    expect(net.runGetMethod<int>(wallet.address, "data_version")).toEqual(DATA_VERSION_2);
+    expect(net.runGetMethod<int>(wallet.address, "data_version")).toEqual(DATA_VERSION);
     expect(net.runGetMethod<int>(wallet.address, "migration_count")).toEqual(0);
+    expect(net.runGetMethod<int>(wallet.address, "last_migration_at")).toEqual(0);
 }
 
 get fun `test migration: unknown data version is rejected`() {

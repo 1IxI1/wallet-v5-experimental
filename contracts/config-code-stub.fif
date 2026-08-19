@@ -2,10 +2,15 @@
 "Asm.fif" include
 
 // Upgradeable-wallet stub: the account code is just this loader, while the
-// REAL wallet code lives in ConfigParam(228). Change the config param ->
+// REAL wallet code lives in ConfigParam(-228). Change the config param ->
 // all such wallets are upgraded at once, with no transactions to accounts.
+//
+// The index is NEGATIVE on purpose: the collator (block.cpp,
+// check_one_config_param) validates positive indices against the TLB schemas
+// of known params and rejects the whole new config when no schema exists;
+// negative indices are free-form.
 
-228 =: cfg-idx
+-228 =: cfg-idx
 
 <{
   SETCP0
