@@ -1,0 +1,24 @@
+#!/usr/bin/env fift -s
+"Asm.fif" include
+
+// Upgradeable-wallet stub: the account code is just this loader, while the
+// REAL wallet code lives in ConfigParam(228). Change the config param ->
+// all such wallets are upgraded at once, with no transactions to accounts.
+
+228 =: cfg-idx
+
+<{
+  SETCP0
+  cfg-idx PUSHINT         // ... idx
+  CONFIGOPTPARAM          // ... (cell | null)
+  DUP ISNULL 63 THROWIF   // ... cell
+  CTOS BLESS              // ... cont
+  DUP c3 POPCTR           // ... cont
+  JMPX                    // ...
+}>c
+dup =: stub-code
+
+."stub code: " stub-code <s csr. cr
+."stub code hash: " stub-code hashu x. cr
+stub-code 2 boc+>B "config-wallet-stub.boc" B>file
+."saved config-wallet-stub.boc" cr

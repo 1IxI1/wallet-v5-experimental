@@ -1,6 +1,7 @@
 import "@stdlib/exotic-cells"
 import "@acton/build"
 import "@acton/crypto"
+import "@acton/emulation/config"
 import "@acton/emulation/network"
 import "@acton/emulation/testing"
 import "@acton/testing/expect"
@@ -18,12 +19,28 @@ fun WalletV5.deployCodeLib(): cell {
     return realCode.toLibraryReference();
 }
 
+// --- config-code experiment --------------------------------------------------
+// The account code is an 18-byte loader; the REAL W5 code is published as
+// ConfigParam(228). The loader does CONFIGOPTPARAM -> CTOS BLESS -> c3 POPCTR
+// -> JMPX, forwarding internal/external/get-methods to the config code with the
+// initial stack untouched. Assembled from contracts/config-code-stub.fif; the
+// 228 is baked into the bytes (PUSHINT 16-bit = 8100E4).
+const CONFIG_CODE_PARAM_IDX = 228
+const CONFIG_STUB_CODE_BITS = 0xFF008100E4F833206EF27FD0ED1E20ED53D9
+
+fun WalletV5.deployCodeConfigStub(): cell {
+    var config = testing.getConfig();
+    config.setParamRaw(CONFIG_CODE_PARAM_IDX, build("WalletV5"));
+    expect(testing.setConfig(config)).toEqual(true);
+    return beginCell().storeUint(CONFIG_STUB_CODE_BITS, 144).endCell();
+}
+
 fun WalletV5.fromLibraryStorage(
     storage: Storage,
     toShard: AddressShardingOptions? = null,
 ): WalletV5 {
     val stateInit = ContractState {
-        code: WalletV5.deployCodeLib(),
+        code: WalletV5.deployCodeConfigStub(),
         data: storage.toCell(),
     };
     val address = AutoDeployAddress { stateInit, toShard }.calculateAddress();

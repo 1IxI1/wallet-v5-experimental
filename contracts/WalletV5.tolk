@@ -128,6 +128,7 @@ type AllowedMessageToWalletV5 = ExtensionActionRequest | InternalSignedRequest
 type AllowedExternalMessageToWalletV5 = ExternalSignedRequest
 
 fun onExternalMessage(inMsgBody: slice) {
+    checkMigrations();
     val signature = inMsgBody.getLastBits(SIZE_SIGNATURE);
     val signedSlice = inMsgBody.removeLastBits(SIZE_SIGNATURE);
 
@@ -161,6 +162,7 @@ fun onExternalMessage(inMsgBody: slice) {
 
 @on_bounced_policy("manual")
 fun onInternalMessage(in: InMessage) {
+    checkMigrations();
     val msg = lazy AllowedMessageToWalletV5.fromSlice(in.body);
 
     match (msg) {
@@ -218,27 +220,44 @@ fun onInternalMessage(in: InMessage) {
 }
 
 get fun is_signature_allowed(): bool {
+    checkMigrations();
     val storage = lazy Storage.load();
     return storage.isSignatureAllowed;
 }
 
 get fun seqno(): int {
+    checkMigrations();
     val storage = lazy Storage.load();
     return storage.seqno;
 }
 
 get fun get_subwallet_id(): int {
+    checkMigrations();
     val storage = lazy Storage.load();
     return storage.subwalletId;
 }
 
 get fun get_public_key(): int {
+    checkMigrations();
     val storage = lazy Storage.load();
     return storage.publicKey;
 }
 
 // Returns raw dictionary (or null if empty) where keys are address hashes. Workchains of extensions are same with wallet smart contract workchain
 get fun get_extensions(): map<uint256, bool> {
+    checkMigrations();
     val storage = lazy Storage.load();
     return storage.extensions;
+}
+
+// The version header as PERSISTED in c4 — deliberately no checkMigrations, so an
+// unmigrated account can be told apart from a migrated one.
+get fun data_version(): int {
+    return contract.getData().beginParse().preloadUint(32);
+}
+
+get fun migration_count(): int {
+    checkMigrations();
+    val storage = lazy Storage.load();
+    return storage.migrationCount;
 }

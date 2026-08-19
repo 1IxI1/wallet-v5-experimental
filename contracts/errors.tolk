@@ -19,4 +19,5 @@ enum Errors {
     NewKeySignatureIsInvalid = 149
     OnlyOwnerCanChangeKey = 150
     PublicKeyWasAlreadyChanged = 151
+    UnknownDataVersion = 152
 }
