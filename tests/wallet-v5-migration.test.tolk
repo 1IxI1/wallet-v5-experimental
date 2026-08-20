@@ -11,10 +11,9 @@ import "../wrappers/utils"
 
 // Data-version migrations through the config-code stub. The wallet's account
 // code is the 18-byte loader; the real code (this build, DATA_VERSION) sits in
-// ConfigParam(228). Wallets whose c4 carries an older version header get
-// migrated by checkMigrations() on the first execution that touches them —
-// staged, one version per step — and the deploy message itself is already such
-// a touch.
+// ConfigParam(-228). Wallets whose c4 carries an older version header are lifted
+// by Storage.loadChecked() — staged, one version per step — on the first
+// execution that actually loads the storage.
 
 fun deployWalletWithData(data: cell): (WalletV5, Treasury) {
     val deployer = testing.treasury("deployer");
@@ -44,17 +43,56 @@ fun v1Data(keyPair: KeyPair, seqno: int, extensions: ExtensionsDict): cell {
     }.toCell();
 }
 
-get fun `test migration: v1 data is migrated by the deploy touch`() {
+// Migration is LAZY: it runs inside the storage load, so it happens on the first
+// operation that actually reads the storage — not on any incoming message. A plain
+// transfer (and the deploy message itself) never parses c4, so it neither pays for
+// the migration nor performs it.
+get fun `test migration: a plain incoming transfer does not migrate`() {
+    val keyPair = crypto.generateKeyPair();
+    val (wallet, deployer) = deployWalletWithData(v1Data(keyPair, 5, []));
+
+    net.send(
+        deployer.address,
+        createMessage({
+            bounce: false,
+            value: ton("1"),
+            dest: wallet.address,
+        }),
+    );
+
+    // c4 still holds v1 ...
+    expect(net.runGetMethod<int>(wallet.address, "data_version")).toEqual(DATA_VERSION_1);
+    // ... while every getter already answers through the in-memory migration
+    expect(net.runGetMethod<int>(wallet.address, "migration_count")).toEqual(2);
+    expect(wallet.getSeqno()).toEqual(5);
+    expect(wallet.getPublicKey()).toEqual(keyPair.publicKey);
+    expect(wallet.isSignatureAllowed()).toEqual(true);
+}
+
+get fun `test migration: v1 data is persisted by the first signed operation`() {
     val keyPair = crypto.generateKeyPair();
     val (wallet, _) = deployWalletWithData(v1Data(keyPair, 5, []));
+    val receiver = testing.treasury("receiver");
 
-    // the deploy internal already ran checkMigrations -> c4 is current now,
+    val txs = wallet.sendExternalSigned(
+        createExternalSignedBody(
+            keyPair,
+            DEFAULT_SUBWALLET_ID,
+            5, // the seqno carried over from the v1 data
+            ActionsList {
+                outActions: [sendMsgAction(receiver.address, ton("1"))],
+                extraActions: [],
+            },
+        ),
+    );
+    expect(txs).toBeNotNull();
+
     // lifted one version at a time (v1 -> v2 -> v3 = 2 migrations)
     expect(net.runGetMethod<int>(wallet.address, "data_version")).toEqual(DATA_VERSION);
     expect(net.runGetMethod<int>(wallet.address, "migration_count")).toEqual(2);
     expect(net.runGetMethod<int>(wallet.address, "last_migration_at")).toBeGreater(0);
-    // v1 fields survived the migration intact
-    expect(wallet.getSeqno()).toEqual(5);
+    // v1 fields survived the migration intact, seqno advanced by the operation
+    expect(wallet.getSeqno()).toEqual(6);
     expect(wallet.getPublicKey()).toEqual(keyPair.publicKey);
     expect(wallet.isSignatureAllowed()).toEqual(true);
 }
@@ -72,11 +110,26 @@ get fun `test migration: v2 data is lifted one version to v3`() {
         migrationCount: 1, // pretend it was born v1 and already migrated once
     }.toCell();
     val (wallet, _) = deployWalletWithData(v2data);
+    val receiver = testing.treasury("receiver");
+
+    expect(
+        wallet.sendExternalSigned(
+            createExternalSignedBody(
+                keyPair,
+                DEFAULT_SUBWALLET_ID,
+                3,
+                ActionsList {
+                    outActions: [sendMsgAction(receiver.address, ton("1"))],
+                    extraActions: [],
+                },
+            ),
+        ),
+    ).toBeNotNull();
 
     expect(net.runGetMethod<int>(wallet.address, "data_version")).toEqual(DATA_VERSION_3);
     expect(net.runGetMethod<int>(wallet.address, "migration_count")).toEqual(2);
     expect(net.runGetMethod<int>(wallet.address, "last_migration_at")).toBeGreater(0);
-    expect(wallet.getSeqno()).toEqual(3);
+    expect(wallet.getSeqno()).toEqual(4);
 }
 
 get fun `test migration: external continues seqno after migration`() {
@@ -149,9 +202,43 @@ get fun `test migration: unknown data version is rejected`() {
         stateInit,
         toShard: null,
     };
-    val deployResult = wallet.deploy(deployer.address, { value: ton("5"), bounce: false });
+    // the deploy itself never parses c4, so it lands fine ...
+    expect(
+        wallet.deploy(deployer.address, { value: ton("5"), bounce: false }),
+    ).toHaveSuccessfulDeploy({ to: address });
 
-    expect(deployResult).toHaveTx({ to: wallet.address, exitCode: Errors.UnknownDataVersion });
+    // ... and the unknown version is caught by the first operation that loads storage
+    expect(
+        wallet.sendExternalSigned(
+            createExternalSignedBody(
+                keyPair,
+                DEFAULT_SUBWALLET_ID,
+                0,
+                ActionsList {
+                    outActions: [],
+                    extraActions: [],
+                },
+            ),
+        ),
+    ).toBeNull();
+
+    val internalAttempt = wallet.sendSignedBody(
+        deployer.address,
+        createSignedBody(
+            keyPair,
+            DEFAULT_SUBWALLET_ID,
+            0,
+            ActionsList {
+                outActions: [],
+                extraActions: [],
+            },
+        ),
+        { value: ton("0.1") },
+    );
+    expect(internalAttempt).toHaveTx({
+        to: wallet.address,
+        exitCode: Errors.UnknownDataVersion,
+    });
 }
 
 // Not a migration per se, but THE upgrade lever end to end: the wallet's brain

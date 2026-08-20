@@ -128,7 +128,6 @@ type AllowedMessageToWalletV5 = ExtensionActionRequest | InternalSignedRequest
 type AllowedExternalMessageToWalletV5 = ExternalSignedRequest
 
 fun onExternalMessage(inMsgBody: slice) {
-    checkMigrations();
     val signature = inMsgBody.getLastBits(SIZE_SIGNATURE);
     val signedSlice = inMsgBody.removeLastBits(SIZE_SIGNATURE);
 
@@ -137,6 +136,7 @@ fun onExternalMessage(inMsgBody: slice) {
         { throwIfOpcodeDoesNotMatch: Errors.InvalidMessageOperation },
     );
 
+    checkMigrations();
     var storage = lazy Storage.load();
 
     assert (
@@ -162,7 +162,6 @@ fun onExternalMessage(inMsgBody: slice) {
 
 @on_bounced_policy("manual")
 fun onInternalMessage(in: InMessage) {
-    checkMigrations();
     val msg = lazy AllowedMessageToWalletV5.fromSlice(in.body);
 
     match (msg) {
@@ -175,6 +174,7 @@ fun onInternalMessage(in: InMessage) {
             val signature = in.body.getLastBits(SIZE_SIGNATURE);
             val signedSlice = in.body.removeLastBits(SIZE_SIGNATURE);
 
+            checkMigrations();
             var storage = lazy Storage.load();
             if (!isSignatureValid(signedSlice.hash(), signature, storage.publicKey)) {
                 return;
@@ -202,6 +202,7 @@ fun onInternalMessage(in: InMessage) {
                 return;
             }
 
+            checkMigrations();
             val storage = lazy Storage.load();
             if (!storage.extensions.exists(senderAddrHash)) {
                 // Note that some random contract may have deposited funds with this prefix,
@@ -250,7 +251,7 @@ get fun get_extensions(): map<uint256, bool> {
     return storage.extensions;
 }
 
-// The version header as PERSISTED in c4 — deliberately no checkMigrations, so an
+// The version header as PERSISTED in c4 — deliberately unchecked, so an
 // unmigrated account can be told apart from a migrated one.
 get fun data_version(): int {
     return contract.getData().beginParse().preloadUint(32);
